@@ -59,10 +59,10 @@ traducciones = {
 }
 
 categorias_ecologicas = {
-    'herbívoros': ['Ratón Canguro', 'Tortuga del Desierto', 'Chacahualas', 'Iguana del Desierto'],
-    'carnívoros': ['Víbora del Desierto', 'Coyote', 'Zorro del Desierto', 'Serpiente de Coral', 'Serpiente bandada'],
-    'omnívoros': ['Correcaminos', 'Lagartija Verde', 'Lagartija de Collar'],
-    'crías': ['Cachorro de Coyote', 'Cachorro de Zorro del Desierto']
+    'herbivoros': ['Ratón Canguro', 'Tortuga del Desierto', 'Chacahualas', 'Iguana del Desierto'],
+    'carnivoros': ['Víbora del Desierto', 'Coyote', 'Zorro del Desierto', 'Serpiente de Coral', 'Serpiente bandada'],
+    'omnivoros': ['Correcaminos', 'Lagartija Verde', 'Lagartija de Collar'],
+    'crias': ['Cachorro de Coyote', 'Cachorro de Zorro del Desierto']
 }
 
 # =================================== SUBIDA DE ARCHIVOS ===================================
@@ -100,7 +100,7 @@ def procesar_entidades(entidades):
         e['nombre_es'] = nombre_esp
         e['categoria'] = 'otros'
         for cat, lista in categorias_ecologicas.items():
-            if nombre_esp in lista or ' ' in nombre_esp:
+            if nombre_esp in lista:
                 e['categoria'] = cat
                 break
         # Extraer coordenadas
@@ -132,7 +132,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.header("📊 Cambios Poblacionales por Especie - Antes vs Después de la Tormenta")
     cambios = df_combinado.groupby(['nombre_es', 'periodo']).size().unstack(fill_value=0)
-    cambios.columns = ['Antes', 'Después']
     cambios['Cambio'] = cambios['Después'] - cambios['Antes']
     cambios['% Cambio'] = ((cambios['Cambio'] / cambios['Antes']) * 100).round(1).replace([np.inf, -np.inf], np.nan)
     
@@ -182,9 +181,10 @@ with tab3:
     for periodo, df in [("Antes", df_antes), ("Después", df_despues)]:
         total = len(df)
         diversidad = df['nombre_es'].nunique()
-        crias = len(df[df['categoria'] == 'crías'])
-        carnivoros = len(df[df['categoria'] == 'carnívoros'])
-        herbivoros = len(df[df['categoria'] == 'herbívoros'])
+        crias = len(df[df['categoria'] == 'crias'])
+        carnivoros = len(df[df['categoria'] == 'carnivoros'])
+        herbivoros = len(df[df['categoria'] == 'herbivoros'])
+        omnivoros = len(df[df['categoria'] == 'omnivoros'])
         balance = carnivoros / herbivoros if herbivoros > 0 else 0
         
         metricas.append({
@@ -210,6 +210,8 @@ with tab3:
     ax_rad.fill(theta, values_despues, color='orange', alpha=0.25)
     ax_rad.set_ylim(0, max(max(values_antes), max(values_despues)))
     ax_rad.set_title('Salud del Ecosistema - Comparativa Radial')
+    ax_rad.set_theta_zero_location('N')
+    ax_rad.set_thetagrids(theta * 180 / np.pi, labels=list(categorias_ecologicas.keys()))
     
     st.pyplot(fig_rad)
 
