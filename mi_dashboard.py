@@ -1,4 +1,6 @@
+```python:disable-run
 # mi_dashboard.py ← Dashboard William Andrey Chaves - Jhon Jairo Mateus - Cesar Luis Correa
+
 import streamlit as st
 import pandas as pd
 import json
@@ -8,6 +10,7 @@ import plotly.subplots as make_subplots
 import os
 from collections import Counter
 import numpy as np
+import matplotlib.pyplot as plt
 
 # =================================== CONFIGURACIÓN ===================================
 st.set_page_config(page_title="Impacto de Tormenta - Ecosistema Desértico", layout="wide", page_icon="🌵")
@@ -98,7 +101,7 @@ def procesar_entidades(entidades):
         e['nombre_es'] = nombre_esp
         e['categoria'] = 'otros'
         for cat, lista in categorias_ecologicas.items():
-            if nombre_esp in lista:
+            if nombre_esp in lista or ' ' in nombre_esp:
                 e['categoria'] = cat
                 break
         # Extraer coordenadas
@@ -130,16 +133,31 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.header("📊 Cambios Poblacionales por Especie - Antes vs Después de la Tormenta")
     cambios = df_combinado.groupby(['nombre_es', 'periodo']).size().unstack(fill_value=0)
+    cambios.columns = ['Antes', 'Después']
     cambios['Cambio'] = cambios['Después'] - cambios['Antes']
     cambios['% Cambio'] = ((cambios['Cambio'] / cambios['Antes']) * 100).round(1).replace([np.inf, -np.inf], np.nan)
     
     st.dataframe(cambios.style.background_gradient(cmap='RdYlGn', subset=['Cambio']))
     
-    fig_cambios = px.bar(cambios.reset_index(), x='nombre_es', y=['Antes', 'Después'], 
-                         barmode='group', title="Cambios Poblacionales por Especie - Antes vs Después de la Tormenta",
-                         color_discrete_sequence=['#ADD8E6', '#FFA07A'])
-    fig_cambios.update_layout(xaxis_title="Especie", yaxis_title="Cantidad de Individuos", xaxis_tickangle=-45)
-    st.plotly_chart(fig_cambios, use_container_width=True)
+    # Gráfico con matplotlib para matching exacto
+    fig, ax = plt.subplots(figsize=(12, 6))
+    x = range(len(cambios))
+    width = 0.35
+    ax.bar([i - width/2 for i in x], cambios['Antes'], width, label='Antes', color='#ADD8E6', alpha=0.7)
+    ax.bar([i + width/2 for i in x], cambios['Después'], width, label='Después', color='#FFA07A', alpha=0.7)
+    ax.set_xlabel('Especies')
+    ax.set_ylabel('Cantidad de Individuos')
+    ax.set_title('Cambios Poblacionales por Especie - Antes vs Después de la Tormenta')
+    ax.set_xticks(x)
+    ax.set_xticklabels(cambios.index, rotation=45, ha='right')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    for i, (idx, row) in enumerate(cambios.iterrows()):
+        cambio = row['Cambio']
+        if cambio != 0:
+            ax.annotate(f"{int(cambio):+}", (i, max(row['Antes'], row['Después']) + 0.5),
+                        ha='center', va='bottom', fontweight='bold')
+    st.pyplot(fig)
 
 with tab2:
     st.header("🗺️ Distribución 3D del Ecosistema - Antes y Después de la Tormenta")
@@ -148,14 +166,14 @@ with tab2:
     with col3d1:
         st.subheader("🌵 Antes de la Tormenta")
         fig_3d_antes = px.scatter_3d(df_antes, x='x', y='y', z='z', color='categoria',
-                                     hover_data=['nombre_es'], title="Distribución Antes de la Tormenta")
+                                     hover_data=['nombre_es'], title="Distribución 3D Antes de la Tormenta")
         fig_3d_antes.update_layout(scene_aspectmode='cube')
         st.plotly_chart(fig_3d_antes, use_container_width=True)
     
     with col3d2:
         st.subheader("🌧️ Después de la Tormenta")
         fig_3d_despues = px.scatter_3d(df_despues, x='x', y='y', z='z', color='categoria',
-                                       hover_data=['nombre_es'], title="Distribución Después de la Tormenta")
+                                       hover_data=['nombre_es'], title="Distribución 3D Después de la Tormenta")
         fig_3d_despues.update_layout(scene_aspectmode='cube')
         st.plotly_chart(fig_3d_despues, use_container_width=True)
 
@@ -174,7 +192,7 @@ with tab3:
             'Periodo': periodo,
             'Total Entidades': total,
             'Diversidad (especies)': diversidad,
-            'Densidad': round(total / (df['x'].max() - df['x'].min() + 1), 2) if len(df) > 0 else 0,
+            'Densidad': round(total / (df['x'].max() - df['x'].min() + 1) if len(df) > 0 else 0, 2),
             'Balance (Carn/Herb)': round(balance, 2),
             'Crías (reproducción)': crias,
             'Salud General': round((diversidad + crias) / total * 100 if total > 0 else 0, 1)
@@ -183,21 +201,18 @@ with tab3:
     df_salud = pd.DataFrame(metricas)
     st.dataframe(df_salud, use_container_width=True)
     
-    categorias_salud = ['Total Entidades', 'Diversidad (especies)', 'Densidad', 'Balance (Carn/Herb)', 'Crías (reproducción)', 'Salud General']
-    fig_radial = go.Figure()
-    for i in range(len(df_salud)):
-        valores = [df_salud.loc[i, cat] for cat in categorias_salud]
-        max_vals = df_salud[categorias_salud].max()
-        valores_norm = [v / max_vals[j] if max_vals[j] > 0 else 0 for j, v in zip(range(len(valores)), valores)]
-        fig_radial.add_trace(go.Scatterpolar(
-            r=valores_norm,
-            theta=categorias_salud,
-            fill='toself',
-            name=df_salud.loc[i, 'Periodo']
-        ))
-    fig_radial.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-                             title="Salud del Ecosistema - Comparativa Radial")
-    st.plotly_chart(fig_radial, use_container_width=True)
+    # Gráfico radial con matplotlib para matching
+    fig_rad, ax_rad = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+    theta = np.linspace(0, 2 * np.pi, len(categorias_ecologicas), endpoint=False)
+    values_antes = [len(df_antes[df_antes['categoria'] == cat]) for cat in categorias_ecologicas]
+    values_despues = [len(df_despues[df_despues['categoria'] == cat]) for cat in categorias_ecologicas]
+    
+    ax_rad.fill(theta, values_antes, color='blue', alpha=0.25)
+    ax_rad.fill(theta, values_despues, color='orange', alpha=0.25)
+    ax_rad.set_ylim(0, max(max(values_antes), max(values_despues)))
+    ax_rad.set_title('Salud del Ecosistema - Comparativa Radial')
+    
+    st.pyplot(fig_rad)
 
 with tab4:
     st.header("🛡️ Tasa de Supervivencia por Categoría")
@@ -206,18 +221,22 @@ with tab4:
     
     st.dataframe(superv.style.background_gradient(cmap='RdYlGn', subset=['Supervivencia %']))
     
-    fig_superv = px.bar(superv.reset_index(), x='categoria', y='Supervivencia %',
-                        color='Supervivencia %', color_continuous_scale='RdYlGn',
-                        title="Tasa de Supervivencia por Categoría")
-    fig_superv.update_layout(xaxis_title="Categoría Ecológica", yaxis_title="Supervivencia (%)")
-    st.plotly_chart(fig_superv, use_container_width=True)
-
-    # Pie chart para distribución Antes
-    st.subheader("Distribución Antes de la Tormenta")
-    dist_antes = df_antes.groupby('categoria').size().reset_index(name='Cantidad')
-    fig_pie_antes = px.pie(dist_antes, values='Cantidad', names='categoria',
-                           title="Distribución Antes de la Tormenta", color_discrete_sequence=px.colors.sequential.RdBu)
-    st.plotly_chart(fig_pie_antes, use_container_width=True)
+    # Gráfico bar con pie para matching
+    fig_superv, (ax_bar, ax_pie) = plt.subplots(1, 2, figsize=(12, 6))
+    
+    # Bar
+    ax_bar.bar(superv.index, superv['Supervivencia %'], color=['green' if p > 80 else 'orange' if p > 50 else 'red' for p in superv['Supervivencia %']])
+    ax_bar.set_title('Tasa de Supervivencia por Categoría')
+    ax_bar.set_ylabel('Supervivencia (%)')
+    ax_bar.set_xticklabels(superv.index, rotation=45)
+    ax_bar.axhline(50, color='red', linestyle='--', alpha=0.5)
+    
+    # Pie
+    sizes_antes = df_antes.groupby('categoria').size()
+    ax_pie.pie(sizes_antes, labels=sizes_antes.index, autopct='%1.1f%%', colors=['green', 'red', 'orange', 'blue'])
+    ax_pie.set_title('Distribución Antes de la Tormenta')
+    
+    st.pyplot(fig_superv)
 
 with tab5:
     st.header("🏷️ Distribución por Categorías Ecológicas - Antes y Después")
@@ -225,11 +244,27 @@ with tab5:
     
     st.dataframe(dist)
     
-    fig_dist = px.bar(dist.reset_index(), x='categoria', y=['Antes', 'Después'],
-                      title="Distribución por Categorías Ecológicas - Antes y Después", barmode='stack',
-                      color_discrete_sequence=['#ADD8E6', '#FFA07A'])
-    fig_dist.update_layout(xaxis_title="Categoría Ecológica", yaxis_title="Cantidad de Individuos")
-    st.plotly_chart(fig_dist, use_container_width=True)
+    # Gráfico stacked bar con labels para matching
+    fig_dist, ax_dist = plt.subplots(figsize=(12, 6))
+    categorias = dist.index
+    antes = dist['Antes']
+    despues = dist['Después']
+    x = range(len(categorias))
+    ax_dist.bar(x, antes, label='Antes', color='#ADD8E6', alpha=0.7)
+    ax_dist.bar(x, despues, bottom=antes, label='Después', color='#FFA07A', alpha=0.7)
+    ax_dist.set_title('Distribución por Categorías Ecológicas - Antes y Después')
+    ax_dist.set_xlabel('Categorías')
+    ax_dist.set_ylabel('Cantidad de Individuos')
+    ax_dist.set_xticks(x)
+    ax_dist.set_xticklabels(categorias, rotation=45)
+    ax_dist.legend()
+    ax_dist.grid(True, alpha=0.3)
+    
+    for i in x:
+        ax_dist.text(i, antes[i]/2, str(antes[i]), ha='center', va='center', color='black')
+        ax_dist.text(i, antes[i] + despues[i]/2, str(despues[i]), ha='center', va='center', color='black')
+    
+    st.pyplot(fig_dist)
 
 # =================================== CONCLUSIÓN FINAL ===================================
 total_antes = len(entidades_antes)
@@ -251,3 +286,4 @@ else:
     st.success("🟢 Buena resiliencia: El ecosistema se mantiene estable")
 
 st.balloons()
+```
