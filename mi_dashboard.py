@@ -1,16 +1,18 @@
-# mi_dashboard.py ← VERSIÓN ACTUALIZADA (lee JSON dinámicamente, sin fallbacks)
+# mi_dashboard.py ← Dashboard William Andrey Chaves - Jhon Jairo Mateus - Cesar Luis Correa
 import streamlit as st
 import pandas as pd
 import json
-from collections import Counter
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.subplots as make_subplots
 import os
+from collections import Counter
+import numpy as np
 
 # =================================== CONFIGURACIÓN ===================================
-st.set_page_config(page_title="Ecosistema Desértico", layout="wide", page_icon="🌵")
-st.title("🌵 Ecosistema Desértico Dinámico - Minecraft")
-st.markdown("### 📊 Análisis basado en datos 100% reales del mundo simulado (leídos del JSON subido)")
+st.set_page_config(page_title="Impacto de Tormenta - Ecosistema Desértico", layout="wide", page_icon="🌵")
+st.title("🌵🌪️ Impacto de la Tormenta en el Ecosistema Desértico")
+st.markdown("### Comparación ANTES y DESPUÉS de la tormenta de arena - Datos 100% reales del JSON")
 
 # =================================== UTILIDADES DE IMAGEN ===================================
 def encontrar_imagen(candidatos):
@@ -28,195 +30,224 @@ def encontrar_imagen(candidatos):
 
 # =================================== IMÁGENES ===================================
 imagen_minecraft = encontrar_imagen(["minecraft.jpg", "minecraft.png", "minecraf.jpg", "minecraf.png"])
-imagen_cadena = encontrar_imagen(["cadena alimenticia.png", "cadena_alimenticia.png", "cadena_alimenticia.jpg"])
 
 if imagen_minecraft:
     st.image(imagen_minecraft, caption="Bioma Desértico - Minecraft", use_column_width=True)
 else:
     st.warning("⚠️ Imagen de Minecraft no encontrada. Renombra tu archivo a 'minecraft.jpg' y colócalo en esta carpeta.")
 
-if imagen_cadena:
-    st.image(imagen_cadena, caption="Cadena Alimenticia del Desierto", use_column_width=True)
-else:
-    st.warning("⚠️ Imagen de la cadena alimenticia no encontrada. Usa 'cadena alimenticia.png' en la carpeta del proyecto.")
-
 st.markdown("---")
 
-# =================================== CARGA DEL JSON ===================================
-st.info("📂 Sube tu archivo JSON generado con el mod (formato: metadata + entidades)")
-uploaded = st.file_uploader("", type=["json"], label_visibility="collapsed")
-
-if not uploaded:
-    st.warning("Por favor sube el archivo JSON para ver los datos reales")
-    st.stop()
-
-try:
-    datos = json.load(uploaded)
-    entidades = datos['entidades']
-    total_entidades = datos['metadata']['total_entidades']
-except Exception:
-    st.error("Error al leer el archivo JSON. Asegúrate de que tenga 'metadata' y 'entidades'.")
-    st.stop()
-
-# =================================== PROCESAMIENTO DINÁMICO DEL JSON ===================================
-# Mapeo de especies a categorías (basado en cadena alimenticia: presas, serpientes, zorros)
-categoria_map = {
-    'kangaroo_mouse': 'Lagarto / Escorpión',
-    'desert_tortoise': 'Lagarto / Escorpión',
-    'roadrunner': 'Lagarto / Escorpión',
-    'chuckwalla': 'Lagarto / Escorpión',
-    'green_lizard': 'Lagarto / Escorpión',
-    'desert_iguana': 'Lagarto / Escorpión',
-    'collared_lizard': 'Lagarto / Escorpión',
-    'desert_viper': 'Serpiente',
-    'coral_snake': 'Serpiente',
-    'coyote': 'Zorro del Desierto',
+# =================================== TRADUCCIONES Y CATEGORÍAS ===================================
+traducciones = {
+    'kangaroo_mouse': 'Ratón Canguro',
+    'desert_viper': 'Víbora del Desierto',
+    'desert_tortoise': 'Tortuga del Desierto',
+    'roadrunner': 'Correcaminos',
+    'chuckwalla': 'Chacahualas',
+    'coyote': 'Coyote',
+    'coral_snake': 'Serpiente de Coral',
+    'green_lizard': 'Lagartija Verde',
+    'collared_lizard': 'Lagartija de Collar',
     'desert_fox': 'Zorro del Desierto',
-    'baby_coyote': 'Zorro del Desierto',
-    'baby_desert_fox': 'Zorro del Desierto'
+    'baby_coyote': 'Cachorro de Coyote',
+    'desert_iguana': 'Iguana del Desierto',
+    'baby_desert_fox': 'Cachorro de Zorro del Desierto',
+    'banded_snake': 'Serpiente bandada',
 }
 
-# Contar especies y mapear a categorías
-nombres = [e['nombre'] for e in entidades]
-conteo_especies = Counter(nombres)
-categorias = {cat: sum(conteo_especies.get(especie, 0) for especie in categoria_map if categoria_map[especie] == cat) for cat in set(categoria_map.values())}
-
-# Valores iniciales (de Excel/DOCX; ajusta si necesitas dinámicos)
-iniciales = {
-    'Lagarto / Escorpión': 165,  # Lagartos + Escorpiones iniciales
-    'Serpiente': 40,
-    'Zorro del Desierto': 5
+categorias_ecologicas = {
+    'herbívoros': ['Ratón Canguro', 'Tortuga del Desierto', 'Chacahualas', 'Iguana del Desierto'],
+    'carnívoros': ['Víbora del Desierto', 'Coyote', 'Zorro del Desierto', 'Serpiente de Coral', 'Serpiente bandada'],
+    'omnívoros': ['Correcaminos', 'Lagartija Verde', 'Lagartija de Collar'],
+    'crías': ['Cachorro de Coyote', 'Cachorro de Zorro del Desierto']
 }
 
-# =================================== DATAFRAMES DINÁMICOS ===================================
-# Fauna DF (dinámico del JSON)
-fauna_df = pd.DataFrame([
-    {"Especie": cat, "Inicial": iniciales.get(cat, 0), "Final": categorias.get(cat, 0)}
-    for cat in ['Lagarto / Escorpión', 'Serpiente', 'Zorro del Desierto']
-])
+# =================================== SUBIDA DE ARCHIVOS ===================================
+col1, col2 = st.columns(2)
 
-# Flora DF (placeholder; no en JSON)
-flora_df = pd.DataFrame([
-    {"Planta": "Cactus", "Cantidad": 0},
-    {"Planta": "Arbusto Seco", "Cantidad": 0},
-    {"Planta": "Planta Frutal", "Cantidad": 0}
-])
+with col1:
+    uploaded_antes = st.file_uploader("📂 Sube JSON ANTES de la tormenta", type=["json"])
 
-# Equilibrio DF (incluye fauna + flora + ambiente estático)
-eq = pd.DataFrame([
-    ["Fauna", "Lagarto / Escorpión", iniciales.get('Lagarto / Escorpión', 0), categorias.get('Lagarto / Escorpión', 0)],
-    ["Fauna", "Serpiente", iniciales.get('Serpiente', 0), categorias.get('Serpiente', 0)],
-    ["Fauna", "Zorro del Desierto", iniciales.get('Zorro del Desierto', 0), categorias.get('Zorro del Desierto', 0)],
-    ["Flora", "Cactus", 50, 0],
-    ["Flora", "Arbusto Seco", 30, 0],
-    ["Ambiente", "Temperatura (°C)", 45, 55],
-    ["Ambiente", "Viento (km/h)", 60, 60],
-    ["Ambiente", "Humedad (%)", 20, 10]
-], columns=["Categoría", "Nombre", "Inicial", "Final"])
+with col2:
+    uploaded_despues = st.file_uploader("📂 Sube JSON DESPUÉS de la tormenta", type=["json"])
 
-eq["Diferencia"] = (eq["Final"] - eq["Inicial"]).abs()
+if not uploaded_antes or not uploaded_despues:
+    st.warning("⚠️ Por favor sube AMBOS archivos JSON para el análisis comparativo")
+    st.stop()
+
+# Procesar archivos
+try:
+    json_antes = json.load(uploaded_antes)
+    json_despues = json.load(uploaded_despues)
+    
+    entidades_antes = json_antes['entidades']
+    entidades_despues = json_despues['entidades']
+    
+    st.success(f"✅ Archivos cargados correctamente\n"
+               f"• ANTES: {len(entidades_antes)} entidades\n"
+               f"• DESPUÉS: {len(entidades_despues)} entidades")
+except:
+    st.error("Error procesando los archivos JSON")
+    st.stop()
+
+# Procesar y traducir entidades
+def procesar_entidades(entidades):
+    for e in entidades:
+        nombre_esp = traducciones.get(e['nombre'], e['nombre'])
+        e['nombre_es'] = nombre_esp
+        e['categoria'] = 'otros'
+        for cat, lista in categorias_ecologicas.items():
+            if nombre_esp in lista:
+                e['categoria'] = cat
+                break
+        # Extraer coordenadas
+        if 'position' in e:
+            e['x'] = e['position'].get('x', 0)
+            e['y'] = e['position'].get('y', 0)
+            e['z'] = e['position'].get('z', 0)
+    return entidades
+
+entidades_antes = procesar_entidades(entidades_antes)
+entidades_despues = procesar_entidades(entidades_despues)
+
+# DataFrames
+df_antes = pd.DataFrame(entidades_antes)
+df_despues = pd.DataFrame(entidades_despues)
+df_antes['periodo'] = 'Antes'
+df_despues['periodo'] = 'Después'
+df_combinado = pd.concat([df_antes, df_despues], ignore_index=True)
 
 # =================================== PESTAÑAS ===================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "☀️ Condiciones Ambientales",
-    "🦎 Fauna del Bioma",
-    "🌵 Flora del Bioma",
-    "🌪️ Eventos Naturales",
-    "⚖️ Equilibrio Ecológico"
+    "📊 Cambios Poblacionales",
+    "🗺️ Distribución 3D",
+    "❤️ Salud del Ecosistema",
+    "🛡️ Supervivencia",
+    "🏷️ Por Categorías"
 ])
 
 with tab1:
-    st.subheader("☀️ Condiciones Ambientales Extremas")
-    ambiente = pd.DataFrame({
-        "Variable": ["Temperatura", "Humedad", "Radiación Solar", "Viento"],
-        "Inicial": [40, 20, 80, 30],
-        "Final": [47, 8, 80, 80],
-        "Unidad": ["°C", "%", "W/m²", "km/h"]
-    })
-    st.dataframe(ambiente.reset_index(drop=True), use_container_width=True, hide_index=True)
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(name="Inicial", x=ambiente["Variable"], y=ambiente["Inicial"], marker_color="#1E40AF"))
-    fig.add_trace(go.Bar(name="Final", x=ambiente["Variable"], y=ambiente["Final"], marker_color="#60A5FA"))
-    fig.update_layout(title="📊 Evolución de Condiciones Ambientales", barmode="group", template="plotly_white")
-    st.plotly_chart(fig, use_container_width=True)
+    st.header("📊 Cambios Poblacionales por Especie - Antes vs Después de la Tormenta")
+    cambios = df_combinado.groupby(['nombre_es', 'periodo']).size().unstack(fill_value=0)
+    cambios['Cambio'] = cambios['Después'] - cambios['Antes']
+    cambios['% Cambio'] = ((cambios['Cambio'] / cambios['Antes']) * 100).round(1).replace([np.inf, -np.inf], np.nan)
+    
+    st.dataframe(cambios.style.background_gradient(cmap='RdYlGn', subset=['Cambio']))
+    
+    fig_cambios = px.bar(cambios.reset_index(), x='nombre_es', y=['Antes', 'Después'], 
+                         barmode='group', title="Cambios Poblacionales por Especie - Antes vs Después de la Tormenta",
+                         color_discrete_sequence=['#ADD8E6', '#FFA07A'])
+    fig_cambios.update_layout(xaxis_title="Especie", yaxis_title="Cantidad de Individuos", xaxis_tickangle=-45)
+    st.plotly_chart(fig_cambios, use_container_width=True)
 
 with tab2:
-    st.subheader("🦎 Fauna del Bioma – Datos reales del JSON")
-    st.dataframe(fauna_df.reset_index(drop=True), use_container_width=True, hide_index=True)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        fig1 = px.bar(
-            fauna_df, x="Especie", y=["Inicial", "Final"],
-            title="📊 Población Inicial vs Final",
-            barmode="group",
-            color_discrete_sequence=["#1E40AF", "#60A5FA"],
-            template="plotly_white"
-        )
-        st.plotly_chart(fig1, use_container_width=True)
-    with col2:
-        fig2 = px.bar(
-            fauna_df, x="Especie", y="Final",
-            title="📊 Población Actual (Real)",
-            color="Final",
-            color_continuous_scale="Blues",
-            template="plotly_white"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+    st.header("🗺️ Distribución 3D del Ecosistema - Antes y Después de la Tormenta")
+    col3d1, col3d2 = st.columns(2)
+    
+    with col3d1:
+        st.subheader("🌵 Antes de la Tormenta")
+        fig_3d_antes = px.scatter_3d(df_antes, x='x', y='y', z='z', color='categoria',
+                                     hover_data=['nombre_es'], title="Distribución Antes de la Tormenta")
+        fig_3d_antes.update_layout(scene_aspectmode='cube')
+        st.plotly_chart(fig_3d_antes, use_container_width=True)
+    
+    with col3d2:
+        st.subheader("🌧️ Después de la Tormenta")
+        fig_3d_despues = px.scatter_3d(df_despues, x='x', y='y', z='z', color='categoria',
+                                       hover_data=['nombre_es'], title="Distribución Después de la Tormenta")
+        fig_3d_despues.update_layout(scene_aspectmode='cube')
+        st.plotly_chart(fig_3d_despues, use_container_width=True)
 
 with tab3:
-    st.subheader("🌵 Flora del Bioma – Datos reales del JSON")
-    st.dataframe(flora_df.reset_index(drop=True), use_container_width=True, hide_index=True)
-
-    fig_pie = px.pie(
-        flora_df, names="Planta", values="Cantidad",
-        title="🌿 Distribución de Flora Real",
-        color_discrete_sequence=px.colors.sequential.Blues,
-        template="plotly_white"
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.header("❤️ Salud del Ecosistema - Comparativa Radial")
+    metricas = []
+    for periodo, df in [("Antes", df_antes), ("Después", df_despues)]:
+        total = len(df)
+        diversidad = df['nombre_es'].nunique()
+        crias = len(df[df['categoria'] == 'crías'])
+        carnivoros = len(df[df['categoria'] == 'carnívoros'])
+        herbivoros = len(df[df['categoria'] == 'herbívoros'])
+        balance = carnivoros / herbivoros if herbivoros > 0 else 0
+        
+        metricas.append({
+            'Periodo': periodo,
+            'Total Entidades': total,
+            'Diversidad (especies)': diversidad,
+            'Densidad': round(total / (df['x'].max() - df['x'].min() + 1), 2) if len(df) > 0 else 0,
+            'Balance (Carn/Herb)': round(balance, 2),
+            'Crías (reproducción)': crias,
+            'Salud General': round((diversidad + crias) / total * 100 if total > 0 else 0, 1)
+        })
+    
+    df_salud = pd.DataFrame(metricas)
+    st.dataframe(df_salud, use_container_width=True)
+    
+    categorias_salud = ['Total Entidades', 'Diversidad (especies)', 'Densidad', 'Balance (Carn/Herb)', 'Crías (reproducción)', 'Salud General']
+    fig_radial = go.Figure()
+    for i in range(len(df_salud)):
+        valores = [df_salud.loc[i, cat] for cat in categorias_salud]
+        max_vals = df_salud[categorias_salud].max()
+        valores_norm = [v / max_vals[j] if max_vals[j] > 0 else 0 for j, v in zip(range(len(valores)), valores)]
+        fig_radial.add_trace(go.Scatterpolar(
+            r=valores_norm,
+            theta=categorias_salud,
+            fill='toself',
+            name=df_salud.loc[i, 'Periodo']
+        ))
+    fig_radial.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                             title="Salud del Ecosistema - Comparativa Radial")
+    st.plotly_chart(fig_radial, use_container_width=True)
 
 with tab4:
-    st.subheader("🌪️ Eventos Naturales Detectados")
-    eventos = pd.DataFrame([
-        {"Evento": "Tormenta de arena", "Condición": "Viento: +70 km/h", "Tiempo": "4 Horas"},
-        {"Evento": "Sequía extrema", "Condición": "Humedad: -10%", "Tiempo": "12 Horas"},
-        {"Evento": "Incendio espontáneo","Condición": "Temperatura: +50 °C","Tiempo": "24 Horas"},
-    ])
-    st.dataframe(eventos.reset_index(drop=True), use_container_width=True, hide_index=True)
+    st.header("🛡️ Tasa de Supervivencia por Categoría")
+    superv = df_combinado.groupby(['categoria', 'periodo']).size().unstack(fill_value=0)
+    superv['Supervivencia %'] = (superv['Después'] / superv['Antes'] * 100).round(1)
+    
+    st.dataframe(superv.style.background_gradient(cmap='RdYlGn', subset=['Supervivencia %']))
+    
+    fig_superv = px.bar(superv.reset_index(), x='categoria', y='Supervivencia %',
+                        color='Supervivencia %', color_continuous_scale='RdYlGn',
+                        title="Tasa de Supervivencia por Categoría")
+    fig_superv.update_layout(xaxis_title="Categoría Ecológica", yaxis_title="Supervivencia (%)")
+    st.plotly_chart(fig_superv, use_container_width=True)
+
+    # Pie chart para distribución Antes
+    st.subheader("Distribución Antes de la Tormenta")
+    dist_antes = df_antes.groupby('categoria').size().reset_index(name='Cantidad')
+    fig_pie_antes = px.pie(dist_antes, values='Cantidad', names='categoria',
+                           title="Distribución Antes de la Tormenta", color_discrete_sequence=px.colors.sequential.RdBu)
+    st.plotly_chart(fig_pie_antes, use_container_width=True)
 
 with tab5:
-    st.subheader("⚖️ Equilibrio Ecológico – Conclusiones reales del JSON")
-    st.dataframe(eq.reset_index(drop=True), use_container_width=True, hide_index=True)
+    st.header("🏷️ Distribución por Categorías Ecológicas - Antes y Después")
+    dist = df_combinado.groupby(['categoria', 'periodo']).size().unstack(fill_value=0)
+    
+    st.dataframe(dist)
+    
+    fig_dist = px.bar(dist.reset_index(), x='categoria', y=['Antes', 'Después'],
+                      title="Distribución por Categorías Ecológicas - Antes y Después", barmode='stack',
+                      color_discrete_sequence=['#ADD8E6', '#FFA07A'])
+    fig_dist.update_layout(xaxis_title="Categoría Ecológica", yaxis_title="Cantidad de Individuos")
+    st.plotly_chart(fig_dist, use_container_width=True)
 
-    fig = px.bar(
-        eq, x="Nombre", y="Diferencia", color="Categoría",
-        title="📊 Diferencia absoluta de población (|Final − Inicial|)",
-        color_discrete_map={"Fauna": "#1E40AF", "Flora": "#60A5FA"},
-        template="plotly_white"
-    )
-    fig.update_layout(
-        xaxis_title="Especie/Planta",
-        yaxis_title="Cambio en población (valor absoluto)",
-        legend_title="Categoría",
-        font=dict(size=14),
-        bargap=0.25
-    )
-    st.plotly_chart(fig, use_container_width=True)
+# =================================== CONCLUSIÓN FINAL ===================================
+total_antes = len(entidades_antes)
+total_despues = len(entidades_despues)
+supervivencia_general = round((total_despues / total_antes * 100) if total_antes > 0 else 0, 1)
 
-    # Conclusiones dinámicas basadas en datos
-    lagartos = categorias.get('Lagarto / Escorpión', 0)
-    serpientes = categorias.get('Serpiente', 0)
-    zorros = categorias.get('Zorro del Desierto', 0)
-    st.error("⚠️ Extinción local de la Serpiente" if serpientes == 0 else f"⚠️ Declive marcado de la Serpiente: {serpientes} restantes")
-    st.warning(f"🦎 Dominio de lagartos/presas: {lagartos} individuos")
-    st.info("🌵 La flora muestra resiliencia con incrementos notables (0 detectados en JSON; integra bloques si necesitas).")
-    st.success(f"⚖️ El ecosistema está desbalanceado: exceso de presas ({lagartos}) y pérdida de depredadores clave ({zorros}).")
+st.success(f"""
+✅ ANÁLISIS COMPLETADO • Datos 100% reales de los JSON subidos
+• Entidades antes: {total_antes}
+• Entidades después: {total_despues}
+• Supervivencia general: {supervivencia_general}%
+""")
 
-# =================================== CIERRE FINAL ===================================
-st.success(
-    f"✅ Análisis completado • Datos 100% reales del JSON subido • "
-    f"🦎 {lagartos} lagartos/presas • 🦊 {zorros} zorros • 🦂 0 escorpiones • 🐍 {serpientes} serpientes"
-)
+if supervivencia_general < 50:
+    st.error("⚠️ Impacto severo: El ecosistema está en riesgo de colapso")
+elif supervivencia_general < 80:
+    st.warning("⚠️ Impacto moderado: Monitorear recuperación")
+else:
+    st.success("🟢 Buena resiliencia: El ecosistema se mantiene estable")
+
 st.balloons()
