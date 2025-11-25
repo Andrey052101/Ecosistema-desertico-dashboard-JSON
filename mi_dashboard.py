@@ -1,4 +1,3 @@
-```python:disable-run
 # mi_dashboard.py ← Dashboard William Andrey Chaves - Jhon Jairo Mateus - Cesar Luis Correa
 
 import streamlit as st
@@ -286,4 +285,3 @@ else:
     st.success("🟢 Buena resiliencia: El ecosistema se mantiene estable")
 
 st.balloons()
-```
